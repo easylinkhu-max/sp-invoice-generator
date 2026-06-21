@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>东南亚电商发票生成器</title>
+    <!-- 条形码库 -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+    <!-- 截图导出库 -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <style>
+        * {box-sizing: border-box;font-family: Arial, Helvetica, sans-serif;margin:0;padding:0;}
+        body {display: flex;gap:24px;padding:20px;background:#f0f2f5;min-height:100vh;}
+        .form-panel {width:460px;background:#fff;padding:20px;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,0.08);height:fit-content;position:sticky;top:20px;}
+        .preview-panel {flex:1;display:flex;justify-content:center;}
+        h3 {margin-bottom:16px;font-size:18px;border-bottom:1px solid #eee;padding-bottom:8px;}
+        h4 {margin:16px 0 10px;font-size:15px;color:#333;}
+        .form-item {margin-bottom:12px;}
+        label {display:block;margin-bottom:4px;font-weight:600;font-size:13px;color:#333;}
+        .tip {font-size:12px;color:#666;margin-top:2px;}
+        input, textarea, select {width:100%;padding:8px 10px;border:1px solid #d9d9d9;border-radius:4px;font-size:14px;outline:none;}
+        input:focus, textarea:focus, select:focus {border-color:#4096ff;}
+        .product-row {display:grid;grid-template-columns: 1fr 80px 60px 30px;gap:8px;margin-bottom:8px;align-items:start;}
+        .del-btn {height:34px;border:none;background:#ff4d4f;color:#fff;border-radius:4px;cursor:pointer;font-size:16px;}
+        .add-btn {width:100%;padding:8px;border:1px dashed #d9d9d9;background:#fafafa;border-radius:4px;cursor:pointer;color:#666;margin-bottom:12px;}
+        .add-btn:hover {border-color:#4096ff;color:#4096ff;}
+        .btn-group {display:flex;gap:10px;margin-top:16px;}
+        .btn {flex:1;padding:10px;background:#1677ff;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px;}
+        .btn:hover {background:#4096ff;}
+
+        /* 发票预览样式 */
+        .invoice-wrap {background:#fff;width:920px;padding:32px;border:1px solid #e5e5e5;}
+        .invoice-title {text-align:center;font-size:30px;font-weight:bold;margin-bottom:24px;letter-spacing:2px;}
+        .header-grid {display:grid;grid-template-columns: 62% 36%;gap:2%;margin-bottom:24px;}
+        .header-table {width:100%;border-collapse: collapse;}
+        .header-table td {border:1px solid #999;padding:10px 12px;font-size:15px;line-height:1.5;}
+        .barcode-box {text-align:center;margin:20px 0 28px;}
+        .barcode-text {margin-top:6px;font-size:14px;}
+        .order-head {display:flex;justify-content:space-between;margin:16px 0 10px;font-size:16px;font-weight:600;}
+        .goods-table {width:100%;border-collapse: collapse;margin-bottom:24px;}
+        .goods-table th,.goods-table td {border:1px solid #999;padding:10px 12px;text-align:left;font-size:14px;vertical-align:top;}
+        .goods-table th {font-weight:600;background:#fafafa;}
+        .goods-table .num-col {width:40px;text-align:center;}
+        .goods-table .price-col, .goods-table .qty-col, .goods-table .sub-col {width:100px;text-align:right;}
+        .summary-list {width:100%;max-width:480px;margin-left:auto;}
+        .summary-row {display:flex;justify-content:space-between;padding:6px 0;font-size:14px;}
+        /* 从属项缩进样式 */
+        .summary-row.sub {padding-left:28px;font-size:13px;color:#555;}
+        .summary-row.bold {font-weight:bold;margin-top:8px;font-size:16px;border-top:1px solid #ccc;padding-top:10px;}
+    </style>
+</head>
+<body>
+<!-- 左侧填写表单 -->
+<div class="form-panel">
+    <h3>发票信息填写</h3>
+    
+    <div class="form-item">
+        <label>货币单位 Currency</label>
+        <select id="currency" oninput="renderInvoice()">
+            <option value="SGD">SGD 新加坡元</option>
+            <option value="THB">THB 泰铢</option>
+            <option value="PHP">PHP 菲律宾比索</option>
+            <option value="MYR">MYR 马来西亚林吉特</option>
+            <option value="IDR">IDR 印尼盾</option>
+            <option value="VND">VND 越南盾</option>
+            <option value="LAK">LAK 老挝基普</option>
+            <option value="KHR">KHR 柬埔寨瑞尔</option>
+            <option value="MMK">MMK 缅甸缅元</option>
+            <option value="USD">USD 美元</option>
+        </select>
+        <div class="tip">东南亚常见币种：新加坡元(SGD)、泰铢(THB)、菲律宾比索(PHP)、马币(MYR)、印尼盾(IDR)、越南盾(VND)</div>
+    </div>
+
+    <div class="form-item">
+        <label>Invoice No 发票号</label>
+        <input id="invNo" value="260617B6K4VAQG" oninput="renderInvoice()">
+    </div>
+    <div class="form-item">
+        <label>Order No 订单号（条形码来源）</label>
+        <input id="ordNo" value="260617B6K4VAQG" oninput="renderInvoice()">
+    </div>
+    <div class="form-item">
+        <label>Order Date 下单日期</label>
+        <input id="ordDate" value="17 Jun 2026" oninput="renderInvoice()">
+    </div>
+    <div class="form-item">
+        <label>Invoice Date 开票日期</label>
+        <input id="invDate" value="17 Jun 2026" oninput="renderInvoice()">
+    </div>
+    <div class="form-item">
+        <label>Invoice To 收件人</label>
+        <input id="invTo" value="mingzhee" oninput="renderInvoice()">
+    </div>
+    <div class="form-item">
+        <label>Shipping Address 收货地址</label>
+        <textarea id="shipAddr" rows="2" oninput="renderInvoice()">Re*******</textarea>
+    </div>
+    <div class="form-item">
+        <label>Phone 联系电话</label>
+        <input id="phone" value="*******14" oninput="renderInvoice()">
+    </div>
+    <div class="form-item">
+        <label>Shop Name 店铺名称</label>
+        <input id="shopName" value="di66e89lyw" oninput="renderInvoice()">
+    </div>
+
+    <h4>商品明细（支持多行）</h4>
+    <div id="productContainer"></div>
+    <button class="add-btn" onclick="addProduct()">+ 添加商品行</button>
+
+    <h4>金额汇总</h4>
+    <div class="form-item">
+        <label>运费实付 Shipping Fee Paid</label>
+        <input id="shipFeePaid" value="0.00" oninput="calcTotal()">
+    </div>
+    <div class="form-item">
+        <label>原运费 Original Shipping Price</label>
+        <input id="oriShipPrice" value="0.00" oninput="renderInvoice()">
+    </div>
+    <div class="form-item">
+        <label>税费 Taxes</label>
+        <input id="tax" value="0.00" oninput="calcTotal()">
+    </div>
+    <div class="form-item">
+        <label>折扣金额 Discount Amount（负数为减扣）</label>
+        <input id="discount" value="-0.67" oninput="calcTotal()">
+    </div>
+    <div class="form-item">
+        <label>其他费用 Others</label>
+        <input id="other" value="0.00" oninput="calcTotal()">
+    </div>
+    <div class="form-item">
+        <label>应付总额 Total Amount Payable（自动计算）</label>
+        <input id="totalPay" value="2.23" readonly style="background:#f5f5f5;">
+    </div>
+
+    <div class="btn-group">
+        <button class="btn" onclick="downloadInvoice()">导出截图PNG</button>
+    </div>
+</div>
+
+<!-- 右侧发票预览区域 -->
+<div class="preview-panel">
+    <div id="invoiceCanvas" class="invoice-wrap">
+        <div class="invoice-title">INVOICE</div>
+        
+        <div class="header-grid">
+            <div>
+                <table class="header-table">
+                    <tr><td>Invoice No: <span id="showInvNo"></span></td></tr>
+                    <tr><td>Order No: <span id="showOrdNo"></span></td></tr>
+                    <tr><td>Order Date: <span id="showOrdDate"></span></td></tr>
+                    <tr><td>Invoice Date: <span id="showInvDate"></span></td></tr>
+                    <tr><td>Invoice To: <span id="showInvTo"></span></td></tr>
+                </table>
+            </div>
+            <div>
+                <table class="header-table">
+                    <tr><td>Shipping address:<br><span id="showShipAddr"></span></td></tr>
+                    <tr><td>Phone: <span id="showPhone"></span></td></tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- 条形码区域 -->
+        <div class="barcode-box">
+            <canvas id="barcodeCanvas"></canvas>
+            <div class="barcode-text">Order No: <span id="showBarOrdNo"></span></div>
+        </div>
+
+        <div class="order-head">
+            <span>Order Details</span>
+            <span>Shop Name: <span id="showShopName"></span></span>
+        </div>
+
+        <table class="goods-table">
+            <thead>
+                <tr>
+                    <th class="num-col">#</th>
+                    <th>Product Name</th>
+                    <th class="price-col">Paid Price</th>
+                    <th class="qty-col">Qty</th>
+                    <th class="sub-col">Subtotal</th>
+                </tr>
+            </thead>
+            <tbody id="goodsTbody">
+                <!-- 商品行动态生成 -->
+            </tbody>
+        </table>
+
+        <div class="summary-list">
+            <div class="summary-row">
+                <span>Item(s) Subtotal after Discounts</span>
+                <span id="showItemSub"></span>
+            </div>
+            <!-- 从属项：商品原价 -->
+            <div class="summary-row sub">
+                <span>Original Price of The Item</span>
+                <span id="showOriItem"></span>
+            </div>
+            <div class="summary-row">
+                <span>Shipping Fee Paid</span>
+                <span id="showShipPaid"></span>
+            </div>
+            <!-- 从属项：原运费 -->
+            <div class="summary-row sub">
+                <span>Original Shipping Price</span>
+                <span id="showOriShip"></span>
+            </div>
+            <div class="summary-row">
+                <span>Taxes</span>
+                <span id="showTax"></span>
+            </div>
+            <div class="summary-row">
+                <span>Discount Amount</span>
+                <span id="showDiscount"></span>
+            </div>
+            <div class="summary-row">
+                <span>Others</span>
+                <span id="showOther"></span>
+            </div>
+            <div class="summary-row bold">
+                <span>Total Amount Payable</span>
+                <span id="showTotalPay"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let productIndex = 0;
+const defaultProducts = [
+    {
+        name: "[SG] 50pcs Popcorn Games Card Sleeves Suitable for Idol Cards Photocards Lomo Cards Polaroid Kpop BTS EXO NCT TXT SKZ",
+        price: 2.90,
+        qty: 1
+    }
+];
+
+// 页面加载完成后初始化
+window.onload = function() {
+    defaultProducts.forEach(p => addProduct(p.name, p.price, p.qty));
+    renderInvoice();
+};
+
+// 添加商品行
+function addProduct(name = '', price = 0, qty = 1) {
+    productIndex++;
+    const container = document.getElementById('productContainer');
+    const row = document.createElement('div');
+    row.className = 'product-row';
+    row.dataset.id = productIndex;
+    row.innerHTML = `
+        <textarea rows="2" class="prod-name" placeholder="商品名称" oninput="renderInvoice()">${name}</textarea>
+        <input type="number" step="0.01" class="prod-price" value="${price}" placeholder="单价" oninput="renderInvoice();calcTotal()">
+        <input type="number" class="prod-qty" value="${qty}" placeholder="数量" oninput="renderInvoice();calcTotal()">
+        <button class="del-btn" onclick="removeProduct(${productIndex})">×</button>
+    `;
+    container.appendChild(row);
+    renderInvoice();
+    calcTotal();
+}
+
+// 删除商品行
+function removeProduct(id) {
+    const row = document.querySelector(`.product-row[data-id="${id}"]`);
+    if (row && document.querySelectorAll('.product-row').length > 1) {
+        row.remove();
+        renderInvoice();
+        calcTotal();
+    }
+}
+
+// 获取当前货币
+function getCurrency() {
+    return document.getElementById('currency').value;
+}
+
+// 计算所有商品小计总和
+function getProductsSubtotal() {
+    const rows = document.querySelectorAll('.product-row');
+    let total = 0;
+    rows.forEach(row => {
+        const price = parseFloat(row.querySelector('.prod-price').value) || 0;
+        const qty = parseInt(row.querySelector('.prod-qty').value) || 0;
+        total += price * qty;
+    });
+    return total;
+}
+
+// 自动计算总价
+function calcTotal() {
+    const itemSub = getProductsSubtotal();
+    const ship = parseFloat(document.getElementById('shipFeePaid').value) || 0;
+    const tax = parseFloat(document.getElementById('tax').value) || 0;
+    const discount = parseFloat(document.getElementById('discount').value) || 0;
+    const other = parseFloat(document.getElementById('other').value) || 0;
+    
+    const total = itemSub + ship + tax + discount + other;
+    document.getElementById('totalPay').value = total.toFixed(2);
+    renderInvoice();
+}
+
+// 渲染发票预览
+function renderInvoice() {
+    const currency = getCurrency();
+    
+    // 基础信息
+    document.getElementById('showInvNo').innerText = document.getElementById('invNo').value;
+    document.getElementById('showOrdNo').innerText = document.getElementById('ordNo').value;
+    document.getElementById('showBarOrdNo').innerText = document.getElementById('ordNo').value;
+    document.getElementById('showOrdDate').innerText = document.getElementById('ordDate').value;
+    document.getElementById('showInvDate').innerText = document.getElementById('invDate').value;
+    document.getElementById('showInvTo').innerText = document.getElementById('invTo').value;
+    document.getElementById('showShipAddr').innerText = document.getElementById('shipAddr').value;
+    document.getElementById('showPhone').innerText = document.getElementById('phone').value;
+    document.getElementById('showShopName').innerText = document.getElementById('shopName').value;
+
+    // 渲染商品表格
+    const tbody = document.getElementById('goodsTbody');
+    tbody.innerHTML = '';
+    const rows = document.querySelectorAll('.product-row');
+    rows.forEach((row, index) => {
+        const name = row.querySelector('.prod-name').value;
+        const price = parseFloat(row.querySelector('.prod-price').value) || 0;
+        const qty = parseInt(row.querySelector('.prod-qty').value) || 0;
+        const subtotal = (price * qty).toFixed(2);
+        
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="num-col">${index + 1}</td>
+            <td>${name}</td>
+            <td class="price-col">${price.toFixed(2)} ${currency}</td>
+            <td class="qty-col">${qty}</td>
+            <td class="sub-col">${subtotal} ${currency}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    // 金额汇总 - 商品原价自动等于折扣后小计
+    const itemSub = getProductsSubtotal();
+    document.getElementById('showItemSub').innerText = itemSub.toFixed(2) + ' ' + currency;
+    document.getElementById('showOriItem').innerText = itemSub.toFixed(2) + ' ' + currency;
+    
+    document.getElementById('showShipPaid').innerText = document.getElementById('shipFeePaid').value + ' ' + currency;
+    document.getElementById('showOriShip').innerText = document.getElementById('oriShipPrice').value + ' ' + currency;
+    document.getElementById('showTax').innerText = document.getElementById('tax').value + ' ' + currency;
+    document.getElementById('showDiscount').innerText = document.getElementById('discount').value + ' ' + currency;
+    document.getElementById('showOther').innerText = document.getElementById('other').value + ' ' + currency;
+    document.getElementById('showTotalPay').innerText = document.getElementById('totalPay').value + ' ' + currency;
+
+    // 生成条形码
+    const ordNo = document.getElementById('ordNo').value;
+    if (ordNo) {
+        JsBarcode("#barcodeCanvas", ordNo, {
+            format: "CODE128",
+            width: 2,
+            height: 50,
+            displayValue: false,
+            margin: 0
+        });
+    }
+}
+
+// 导出截图
+function downloadInvoice() {
+    const target = document.getElementById('invoiceCanvas');
+    html2canvas(target, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        logging: false
+    }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = 'INVOICE_' + document.getElementById('ordNo').value + '.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    }).catch(err => {
+        alert('导出失败，请检查网络是否能访问CDN资源，或更换浏览器重试');
+        console.error(err);
+    });
+}
+</script>
+</body>
+</html>
